@@ -145,7 +145,7 @@ func TestSuiteStatus(t *testing.T) {
 	defer store.Get().Clear()
 	defer cache.Clear()
 	cfg := &config.Config{
-		Metrics: true,
+		Metrics: config.MetricsConfig{Enabled: true},
 		Suites: []*suite.Suite{
 			{
 				Name:  "frontend-suite",
@@ -226,7 +226,7 @@ func TestSuiteStatus_SuiteNotInStoreButInConfig(t *testing.T) {
 			name:     "suite-not-in-store-but-exists-in-config-enabled",
 			suiteKey: "test-group_test-suite",
 			cfg: &config.Config{
-				Metrics: true,
+				Metrics: config.MetricsConfig{Enabled: true},
 				Suites: []*suite.Suite{
 					{
 						Name:    "test-suite",
@@ -253,7 +253,7 @@ func TestSuiteStatus_SuiteNotInStoreButInConfig(t *testing.T) {
 			name:     "suite-not-in-store-but-exists-in-config-disabled",
 			suiteKey: "test-group_disabled-suite",
 			cfg: &config.Config{
-				Metrics: true,
+				Metrics: config.MetricsConfig{Enabled: true},
 				Suites: []*suite.Suite{
 					{
 						Name:    "disabled-suite",
@@ -273,7 +273,7 @@ func TestSuiteStatus_SuiteNotInStoreButInConfig(t *testing.T) {
 			name:     "suite-not-in-store-and-not-in-config",
 			suiteKey: "nonexistent_suite",
 			cfg: &config.Config{
-				Metrics: true,
+				Metrics: config.MetricsConfig{Enabled: true},
 				Suites: []*suite.Suite{
 					{
 						Name:  "different-suite",
@@ -292,7 +292,7 @@ func TestSuiteStatus_SuiteNotInStoreButInConfig(t *testing.T) {
 			name:     "suite-with-empty-group-in-config",
 			suiteKey: "_empty-group-suite",
 			cfg: &config.Config{
-				Metrics: true,
+				Metrics: config.MetricsConfig{Enabled: true},
 				Suites: []*suite.Suite{
 					{
 						Name:  "empty-group-suite",
@@ -311,7 +311,7 @@ func TestSuiteStatus_SuiteNotInStoreButInConfig(t *testing.T) {
 			name:     "suite-nil-enabled-defaults-to-true",
 			suiteKey: "default_enabled-suite",
 			cfg: &config.Config{
-				Metrics: true,
+				Metrics: config.MetricsConfig{Enabled: true},
 				Suites: []*suite.Suite{
 					{
 						Name:    "enabled-suite",
@@ -380,7 +380,7 @@ func TestSuiteStatuses(t *testing.T) {
 		secondResult.EndpointResults[i].Timestamp = time.Time{}
 	}
 	api := New(&config.Config{
-		Metrics: true,
+		Metrics: config.MetricsConfig{Enabled: true},
 		Storage: &storage.Config{
 			MaximumNumberOfResults: storage.DefaultMaximumNumberOfResults,
 			MaximumNumberOfEvents:  storage.DefaultMaximumNumberOfEvents,
@@ -451,7 +451,7 @@ func TestSuiteStatuses_NoSuitesInStoreButExistInConfig(t *testing.T) {
 	defer store.Get().Clear()
 	defer cache.Clear()
 	cfg := &config.Config{
-		Metrics: true,
+		Metrics: config.MetricsConfig{Enabled: true},
 		Suites: []*suite.Suite{
 			{
 				Name:    "config-only-suite-1",

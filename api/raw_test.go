@@ -17,7 +17,7 @@ func TestRawDataEndpoint(t *testing.T) {
 	defer store.Get().Clear()
 	defer cache.Clear()
 	cfg := &config.Config{
-		Metrics: true,
+		Metrics: config.MetricsConfig{Enabled: true},
 		Endpoints: []*endpoint.Endpoint{
 			{
 				Name:  "frontend",

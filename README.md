@@ -250,7 +250,7 @@ If you want to test it locally, see [Docker](#docker).
 ## Configuration
 | Parameter                    | Description                                                                                                                              | Default       |
 |:-----------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------|:--------------|
-| `metrics`                    | Whether to expose metrics at `/metrics`.                                                                                                 | `false`       |
+| `metrics`                    | Metrics configuration. See [Metrics](#metrics).                                                                                          | `false`       |
 | `storage`                    | [Storage configuration](#storage).                                                                                                       | `{}`          |
 | `alerting`                   | [Alerting configuration](#alerting).                                                                                                     | `{}`          |
 | `announcements`              | [Announcements configuration](#announcements).                                                                                           | `[]`          |
@@ -1055,6 +1055,9 @@ endpoints:
         description: "healthcheck failed"
         send-on-resolved: true
 ```
+
+When an alert is resolved, the original triggered message is edited in place instead of sending a new message.
+If the edit fails (e.g. the message was deleted), a new message is sent.
 
 
 #### Configuring Email alerts
@@ -2126,7 +2129,9 @@ endpoints:
 | Parameter                          | Description                                                                                | Default                             |
 |:-----------------------------------|:-------------------------------------------------------------------------------------------|:------------------------------------|
 | `alerting.slack`                   | Configuration for alerts of type `slack`                                                   | `{}`                                |
-| `alerting.slack.webhook-url`       | Slack Webhook URL                                                                          | Required `""`                       |
+| `alerting.slack.webhook-url`       | Slack Webhook URL                                                                          | Required unless `bot-token` is set  |
+| `alerting.slack.bot-token`         | Slack bot token (`chat:write` scope). Takes precedence over `webhook-url`                  | `""`                                |
+| `alerting.slack.channel`           | Channel name or ID to post to. Required with `bot-token`                                   | `""`                                |
 | `alerting.slack.title`             | Title of the notification                                                                  | `":helmet_with_white_cross: Gatus"` |
 | `alerting.slack.default-alert`     | Default alert configuration. <br />See [Setting a default alert](#setting-a-default-alert) | N/A                                 |
 | `alerting.slack.overrides`         | List of overrides that may be prioritized over the default configuration                   | `[]`                                |
@@ -2154,6 +2159,16 @@ endpoints:
         failure-threshold: 5
         description: "healthcheck failed 5 times in a row"
         send-on-resolved: true
+```
+
+With `bot-token` and `channel`, a resolved alert updates the original triggered message instead of posting a new one.
+The bot must be a member of the channel.
+
+```yaml
+alerting:
+  slack:
+    bot-token: "xoxb-**********"
+    channel: "#alerts"
 ```
 
 Here's an example of what the notifications look like:
@@ -2838,8 +2853,20 @@ web:
 
 
 ### Metrics
-To enable metrics, you must set `metrics` to `true`. Doing so will expose Prometheus-friendly metrics at the `/metrics`
-endpoint on the same port your application is configured to run on (`web.port`).
+To enable metrics, you must set `metrics` to `true` (or `metrics.enabled` to `true`). Doing so will expose Prometheus-friendly
+metrics at the `/metrics` endpoint on the same port your application is configured to run on (`web.port`).
+
+| Parameter         | Description                                                                                                       | Default |
+|:------------------|:------------------------------------------------------------------------------------------------------------------|:--------|
+| `metrics.enabled` | Whether to expose metrics at `/metrics`.                                                                          | `false` |
+| `metrics.port`    | Serve `/metrics` on a dedicated port instead of `web.port`, e.g. to keep it off a public reverse proxy. Plain HTTP. | `0`     |
+| `metrics.auth`    | Require authentication on `/metrics` using the `security` configuration. Prometheus can only use `security.basic`. | `false` |
+
+```yaml
+metrics:
+  enabled: true
+  port: 9090
+```
 
 | Metric name                                  | Type    | Description                                                                | Labels                          | Relevant endpoint types |
 |:---------------------------------------------|:--------|:---------------------------------------------------------------------------|:--------------------------------|:------------------------|

@@ -18,7 +18,7 @@ func TestBadge(t *testing.T) {
 	defer store.Get().Clear()
 	defer cache.Clear()
 	cfg := &config.Config{
-		Metrics: true,
+		Metrics: config.MetricsConfig{Enabled: true},
 		Endpoints: []*endpoint.Endpoint{
 			{
 				Name:  "frontend",
@@ -254,7 +254,7 @@ func TestGetBadgeColorFromResponseTime(t *testing.T) {
 		},
 	}
 	cfg := &config.Config{
-		Metrics:   true,
+		Metrics:   config.MetricsConfig{Enabled: true},
 		Endpoints: []*endpoint.Endpoint{&firstTestEndpoint, &secondTestEndpoint},
 	}
 

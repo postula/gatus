@@ -2,7 +2,9 @@ package discord
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/TwiN/gatus/v5/alerting/alert"
@@ -393,6 +395,68 @@ func TestAlertProvider_GetConfig(t *testing.T) {
 			// Test ValidateOverrides as well, since it really just calls GetConfig
 			if err = scenario.Provider.ValidateOverrides(scenario.InputGroup, &scenario.InputAlert); err != nil {
 				t.Errorf("unexpected error: %s", err)
+			}
+		})
+	}
+}
+
+func TestAlertProvider_SendEditsMessageOnResolve(t *testing.T) {
+	defer client.InjectHTTPClient(nil)
+	provider := AlertProvider{DefaultConfig: Config{WebhookURL: "https://discord.com/api/webhooks/1/token?thread_id=9"}}
+	scenarios := []struct {
+		Name               string
+		ResolveKey         string
+		Resolved           bool
+		StatusCodes        []int
+		ExpectedRequests   []string
+		ExpectedResolveKey string
+	}{
+		{
+			Name:               "triggered-stores-message-id",
+			StatusCodes:        []int{http.StatusOK},
+			ExpectedRequests:   []string{"POST https://discord.com/api/webhooks/1/token?thread_id=9&wait=true"},
+			ExpectedResolveKey: "42",
+		},
+		{
+			Name:             "resolved-edits-message",
+			ResolveKey:       "42",
+			Resolved:         true,
+			StatusCodes:      []int{http.StatusOK},
+			ExpectedRequests: []string{"PATCH https://discord.com/api/webhooks/1/token/messages/42?thread_id=9"},
+		},
+		{
+			Name:        "resolved-edit-failure-sends-new-message",
+			ResolveKey:  "42",
+			Resolved:    true,
+			StatusCodes: []int{http.StatusNotFound, http.StatusOK},
+			ExpectedRequests: []string{
+				"PATCH https://discord.com/api/webhooks/1/token/messages/42?thread_id=9",
+				"POST https://discord.com/api/webhooks/1/token?thread_id=9&wait=true",
+			},
+		},
+		{
+			Name:             "resolved-without-key-sends-new-message",
+			Resolved:         true,
+			StatusCodes:      []int{http.StatusOK},
+			ExpectedRequests: []string{"POST https://discord.com/api/webhooks/1/token?thread_id=9&wait=true"},
+		},
+	}
+	for _, scenario := range scenarios {
+		t.Run(scenario.Name, func(t *testing.T) {
+			var requests []string
+			client.InjectHTTPClient(&http.Client{Transport: test.MockRoundTripper(func(r *http.Request) *http.Response {
+				requests = append(requests, r.Method+" "+r.URL.String())
+				return &http.Response{StatusCode: scenario.StatusCodes[len(requests)-1], Body: io.NopCloser(strings.NewReader(`{"id":"42"}`))}
+			})})
+			a := alert.Alert{ResolveKey: scenario.ResolveKey, SuccessThreshold: 2, FailureThreshold: 2}
+			if err := provider.Send(&endpoint.Endpoint{Name: "endpoint-name"}, &a, &endpoint.Result{}, scenario.Resolved); err != nil {
+				t.Fatal("expected no error, got", err.Error())
+			}
+			if strings.Join(requests, "\n") != strings.Join(scenario.ExpectedRequests, "\n") {
+				t.Errorf("expected requests:\n%s\ngot:\n%s", strings.Join(scenario.ExpectedRequests, "\n"), strings.Join(requests, "\n"))
+			}
+			if a.ResolveKey != scenario.ExpectedResolveKey {
+				t.Errorf("expected resolve key %q, got %q", scenario.ExpectedResolveKey, a.ResolveKey)
 			}
 		})
 	}

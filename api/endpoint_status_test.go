@@ -85,7 +85,7 @@ func TestEndpointStatus(t *testing.T) {
 	defer store.Get().Clear()
 	defer cache.Clear()
 	cfg := &config.Config{
-		Metrics: true,
+		Metrics: config.MetricsConfig{Enabled: true},
 		Endpoints: []*endpoint.Endpoint{
 			{
 				Name:  "frontend",
@@ -162,7 +162,7 @@ func TestEndpointStatuses(t *testing.T) {
 	firstResult.Timestamp = time.Time{}
 	secondResult.Timestamp = time.Time{}
 	api := New(&config.Config{
-		Metrics: true,
+		Metrics: config.MetricsConfig{Enabled: true},
 		Storage: &storage.Config{
 			MaximumNumberOfResults: storage.DefaultMaximumNumberOfResults,
 			MaximumNumberOfEvents:  storage.DefaultMaximumNumberOfEvents,
