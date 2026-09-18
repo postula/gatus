@@ -2,7 +2,9 @@ package slack
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/TwiN/gatus/v5/alerting/alert"
@@ -19,6 +21,14 @@ func TestAlertProvider_Validate(t *testing.T) {
 	validProvider := AlertProvider{DefaultConfig: Config{WebhookURL: "https://example.com"}}
 	if err := validProvider.Validate(); err != nil {
 		t.Error("provider should've been valid")
+	}
+	botProviderWithoutChannel := AlertProvider{DefaultConfig: Config{BotToken: "xoxb-token"}}
+	if err := botProviderWithoutChannel.Validate(); err == nil {
+		t.Error("provider without channel shouldn't have been valid")
+	}
+	validBotProvider := AlertProvider{DefaultConfig: Config{BotToken: "xoxb-token", Channel: "#alerts"}}
+	if err := validBotProvider.Validate(); err != nil {
+		t.Error("bot provider should've been valid")
 	}
 }
 
@@ -211,7 +221,7 @@ func TestAlertProvider_buildRequestBody(t *testing.T) {
 			if err != nil {
 				t.Fatal("couldn't get config:", err.Error())
 			}
-			body := scenario.Provider.buildRequestBody(
+			body, _ := json.Marshal(scenario.Provider.buildRequestBody(
 				cfg,
 				&scenario.Endpoint,
 				&scenario.Alert,
@@ -219,7 +229,7 @@ func TestAlertProvider_buildRequestBody(t *testing.T) {
 					ConditionResults: conditionResults,
 				},
 				scenario.Resolved,
-			)
+			))
 			if string(body) != scenario.ExpectedBody {
 				t.Errorf("expected:\n%s\ngot:\n%s", scenario.ExpectedBody, body)
 			}
@@ -326,6 +336,78 @@ func TestAlertProvider_GetConfig(t *testing.T) {
 			// Test ValidateOverrides as well, since it really just calls GetConfig
 			if err = scenario.Provider.ValidateOverrides(scenario.InputGroup, &scenario.InputAlert); err != nil {
 				t.Errorf("unexpected error: %s", err)
+			}
+		})
+	}
+}
+
+func TestAlertProvider_SendWithBotToken(t *testing.T) {
+	defer client.InjectHTTPClient(nil)
+	provider := AlertProvider{DefaultConfig: Config{BotToken: "xoxb-token", Channel: "#alerts"}}
+	scenarios := []struct {
+		Name               string
+		ResolveKey         string
+		Resolved           bool
+		Response           string
+		ExpectedURL        string
+		ExpectedBody       Body
+		ExpectedResolveKey string
+		ExpectedError      bool
+	}{
+		{
+			Name:               "triggered-posts-message-and-stores-key",
+			Response:           `{"ok":true,"channel":"C123","ts":"1700000000.000100"}`,
+			ExpectedURL:        "https://slack.com/api/chat.postMessage",
+			ExpectedBody:       Body{Channel: "#alerts"},
+			ExpectedResolveKey: "C123/1700000000.000100",
+		},
+		{
+			Name:               "resolved-updates-stored-message",
+			ResolveKey:         "C123/1700000000.000100",
+			Resolved:           true,
+			Response:           `{"ok":true,"channel":"C123","ts":"1700000000.000100"}`,
+			ExpectedURL:        "https://slack.com/api/chat.update",
+			ExpectedBody:       Body{Channel: "C123", TS: "1700000000.000100"},
+			ExpectedResolveKey: "",
+		},
+		{
+			Name:         "resolved-without-key-posts-message",
+			Resolved:     true,
+			Response:     `{"ok":true,"channel":"C123","ts":"1700000000.000200"}`,
+			ExpectedURL:  "https://slack.com/api/chat.postMessage",
+			ExpectedBody: Body{Channel: "#alerts"},
+		},
+		{
+			Name:          "ok-false-is-an-error",
+			Response:      `{"ok":false,"error":"channel_not_found"}`,
+			ExpectedURL:   "https://slack.com/api/chat.postMessage",
+			ExpectedBody:  Body{Channel: "#alerts"},
+			ExpectedError: true,
+		},
+	}
+	for _, scenario := range scenarios {
+		t.Run(scenario.Name, func(t *testing.T) {
+			var sentBody Body
+			client.InjectHTTPClient(&http.Client{Transport: test.MockRoundTripper(func(r *http.Request) *http.Response {
+				if r.URL.String() != scenario.ExpectedURL {
+					t.Errorf("expected URL %s, got %s", scenario.ExpectedURL, r.URL.String())
+				}
+				if r.Header.Get("Authorization") != "Bearer xoxb-token" {
+					t.Errorf("expected bearer token, got %q", r.Header.Get("Authorization"))
+				}
+				_ = json.NewDecoder(r.Body).Decode(&sentBody)
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(scenario.Response))}
+			})})
+			a := alert.Alert{ResolveKey: scenario.ResolveKey, SuccessThreshold: 2, FailureThreshold: 2}
+			err := provider.Send(&endpoint.Endpoint{Name: "endpoint-name"}, &a, &endpoint.Result{}, scenario.Resolved)
+			if scenario.ExpectedError != (err != nil) {
+				t.Fatalf("expected error=%v, got %v", scenario.ExpectedError, err)
+			}
+			if sentBody.Channel != scenario.ExpectedBody.Channel || sentBody.TS != scenario.ExpectedBody.TS {
+				t.Errorf("expected channel=%s ts=%s, got channel=%s ts=%s", scenario.ExpectedBody.Channel, scenario.ExpectedBody.TS, sentBody.Channel, sentBody.TS)
+			}
+			if !scenario.ExpectedError && a.ResolveKey != scenario.ExpectedResolveKey {
+				t.Errorf("expected resolve key %q, got %q", scenario.ExpectedResolveKey, a.ResolveKey)
 			}
 		})
 	}
