@@ -7,10 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 
 	"github.com/TwiN/gatus/v5/alerting/alert"
 	"github.com/TwiN/gatus/v5/client"
 	"github.com/TwiN/gatus/v5/config/endpoint"
+	"github.com/TwiN/logr"
 	"gopkg.in/yaml.v3"
 )
 
@@ -80,22 +82,62 @@ func (provider *AlertProvider) Send(ep *endpoint.Endpoint, alert *alert.Alert, r
 	if err != nil {
 		return err
 	}
-	buffer := bytes.NewBuffer(provider.buildRequestBody(cfg, ep, alert, result, resolved))
-	request, err := http.NewRequest(http.MethodPost, cfg.WebhookURL, buffer)
+	body := provider.buildRequestBody(cfg, ep, alert, result, resolved)
+	if resolved && len(alert.ResolveKey) > 0 {
+		messageID := alert.ResolveKey
+		alert.ResolveKey = ""
+		err := call(http.MethodPatch, cfg.WebhookURL, "/messages/"+messageID, body, nil)
+		if err == nil {
+			return nil
+		}
+		// The message may have been deleted or the webhook changed; a new message beats a lost resolution
+		logr.Warnf("[discord.Send] Failed to edit message %s, sending a new one instead: %s", messageID, err.Error())
+	}
+	var message struct {
+		ID string `json:"id"`
+	}
+	if err := call(http.MethodPost, cfg.WebhookURL, "", body, &message); err != nil {
+		return err
+	}
+	if !resolved {
+		// Persisted by the watchdog so the resolution can edit this message, even across restarts
+		alert.ResolveKey = message.ID
+	}
+	return nil
+}
+
+// call sends body to the webhook URL with pathSuffix appended, preserving query parameters such as thread_id.
+// POST requests wait for the created message so its ID can be decoded into response.
+func call(method, webhookURL, pathSuffix string, body []byte, response any) error {
+	u, err := url.Parse(webhookURL)
+	if err != nil {
+		return err
+	}
+	u.Path += pathSuffix
+	if method == http.MethodPost {
+		query := u.Query()
+		query.Set("wait", "true")
+		u.RawQuery = query.Encode()
+	}
+	request, err := http.NewRequest(method, u.String(), bytes.NewBuffer(body))
 	if err != nil {
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
-	response, err := client.GetHTTPClient(nil).Do(request)
+	resp, err := client.GetHTTPClient(nil).Do(request)
 	if err != nil {
 		return err
 	}
-	defer response.Body.Close()
-	if response.StatusCode > 399 {
-		body, _ := io.ReadAll(response.Body)
-		return fmt.Errorf("call to provider alert returned status code %d: %s", response.StatusCode, string(body))
+	defer resp.Body.Close()
+	if resp.StatusCode > 399 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("call to provider alert returned status code %d: %s", resp.StatusCode, string(body))
 	}
-	return err
+	if response != nil {
+		// A missing ID only means the resolution will be sent as a new message
+		_ = json.NewDecoder(resp.Body).Decode(response)
+	}
+	return nil
 }
 
 type Body struct {

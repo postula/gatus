@@ -1056,6 +1056,9 @@ endpoints:
         send-on-resolved: true
 ```
 
+When an alert is resolved, the original triggered message is edited in place instead of sending a new message.
+If the edit fails (e.g. the message was deleted), a new message is sent.
+
 
 #### Configuring Email alerts
 | Parameter                          | Description                                                                                   | Default       |
