@@ -77,14 +77,15 @@ func (a *API) createRouter(cfg *config.Config) *fiber.App {
 	////////////////////////
 	unprotectedAPIRouter := apiRouter.Group("/")
 	unprotectedAPIRouter.Get("/v1/config", ConfigHandler{securityConfig: cfg.Security, config: cfg}.GetConfig)
-	unprotectedAPIRouter.Get("/v1/endpoints/:key/health/badge.svg", HealthBadge)
-	unprotectedAPIRouter.Get("/v1/endpoints/:key/health/badge.shields", HealthBadgeShields)
-	unprotectedAPIRouter.Get("/v1/endpoints/:key/uptimes/:duration", UptimeRaw)
-	unprotectedAPIRouter.Get("/v1/endpoints/:key/uptimes/:duration/badge.svg", UptimeBadge)
-	unprotectedAPIRouter.Get("/v1/endpoints/:key/response-times/:duration", ResponseTimeRaw)
-	unprotectedAPIRouter.Get("/v1/endpoints/:key/response-times/:duration/badge.svg", ResponseTimeBadge(cfg))
-	unprotectedAPIRouter.Get("/v1/endpoints/:key/response-times/:duration/chart.svg", ResponseTimeChart)
-	unprotectedAPIRouter.Get("/v1/endpoints/:key/response-times/:duration/history", ResponseTimeHistory)
+	badgeVisibility := requireBadgeVisibility(cfg)
+	unprotectedAPIRouter.Get("/v1/endpoints/:key/health/badge.svg", badgeVisibility, HealthBadge)
+	unprotectedAPIRouter.Get("/v1/endpoints/:key/health/badge.shields", badgeVisibility, HealthBadgeShields)
+	unprotectedAPIRouter.Get("/v1/endpoints/:key/uptimes/:duration", badgeVisibility, UptimeRaw)
+	unprotectedAPIRouter.Get("/v1/endpoints/:key/uptimes/:duration/badge.svg", badgeVisibility, UptimeBadge)
+	unprotectedAPIRouter.Get("/v1/endpoints/:key/response-times/:duration", badgeVisibility, ResponseTimeRaw)
+	unprotectedAPIRouter.Get("/v1/endpoints/:key/response-times/:duration/badge.svg", badgeVisibility, ResponseTimeBadge(cfg))
+	unprotectedAPIRouter.Get("/v1/endpoints/:key/response-times/:duration/chart.svg", badgeVisibility, ResponseTimeChart)
+	unprotectedAPIRouter.Get("/v1/endpoints/:key/response-times/:duration/history", badgeVisibility, ResponseTimeHistory)
 	// This endpoint requires authz with bearer token, so technically it is protected
 	unprotectedAPIRouter.Post("/v1/endpoints/:key/external", CreateExternalEndpointResult(cfg))
 	// SPA
