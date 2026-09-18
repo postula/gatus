@@ -2126,7 +2126,9 @@ endpoints:
 | Parameter                          | Description                                                                                | Default                             |
 |:-----------------------------------|:-------------------------------------------------------------------------------------------|:------------------------------------|
 | `alerting.slack`                   | Configuration for alerts of type `slack`                                                   | `{}`                                |
-| `alerting.slack.webhook-url`       | Slack Webhook URL                                                                          | Required `""`                       |
+| `alerting.slack.webhook-url`       | Slack Webhook URL                                                                          | Required unless `bot-token` is set  |
+| `alerting.slack.bot-token`         | Slack bot token (`chat:write` scope). Takes precedence over `webhook-url`                  | `""`                                |
+| `alerting.slack.channel`           | Channel name or ID to post to. Required with `bot-token`                                   | `""`                                |
 | `alerting.slack.title`             | Title of the notification                                                                  | `":helmet_with_white_cross: Gatus"` |
 | `alerting.slack.default-alert`     | Default alert configuration. <br />See [Setting a default alert](#setting-a-default-alert) | N/A                                 |
 | `alerting.slack.overrides`         | List of overrides that may be prioritized over the default configuration                   | `[]`                                |
@@ -2154,6 +2156,16 @@ endpoints:
         failure-threshold: 5
         description: "healthcheck failed 5 times in a row"
         send-on-resolved: true
+```
+
+With `bot-token` and `channel`, a resolved alert updates the original triggered message instead of posting a new one.
+The bot must be a member of the channel.
+
+```yaml
+alerting:
+  slack:
+    bot-token: "xoxb-**********"
+    channel: "#alerts"
 ```
 
 Here's an example of what the notifications look like:
