@@ -23,7 +23,8 @@ import (
 )
 
 type API struct {
-	router *fiber.App
+	router        *fiber.App
+	metricsRouter *fiber.App
 }
 
 func New(cfg *config.Config) *API {
@@ -42,6 +43,11 @@ func New(cfg *config.Config) *API {
 
 func (a *API) Router() *fiber.App {
 	return a.router
+}
+
+// MetricsRouter returns the dedicated /metrics app, or nil when metrics are served by Router
+func (a *API) MetricsRouter() *fiber.App {
+	return a.metricsRouter
 }
 
 func (a *API) createRouter(cfg *config.Config) *fiber.App {
@@ -64,11 +70,23 @@ func (a *API) createRouter(cfg *config.Config) *fiber.App {
 	app.Use(recover.New())
 	app.Use(compress.New())
 	// Define metrics handler, if necessary
-	if cfg.Metrics {
-		metricsHandler := promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
+	if cfg.Metrics.Enabled {
+		metricsHandler := adaptor.HTTPHandler(promhttp.InstrumentMetricHandler(prometheus.DefaultRegisterer, promhttp.HandlerFor(prometheus.DefaultGatherer, promhttp.HandlerOpts{
 			DisableCompression: true,
-		}))
-		app.Get("/metrics", adaptor.HTTPHandler(metricsHandler))
+		})))
+		metricsRouter := fiber.Router(app)
+		if cfg.Metrics.Port != 0 {
+			a.metricsRouter = fiber.New(fiber.Config{Network: fiber.NetworkTCP})
+			a.metricsRouter.Use(recover.New())
+			metricsRouter = a.metricsRouter
+		}
+		metricsGroup := metricsRouter.Group("/metrics")
+		if cfg.Metrics.Auth {
+			if err := cfg.Security.ApplySecurityMiddleware(metricsGroup); err != nil {
+				panic(err)
+			}
+		}
+		metricsGroup.Get("", metricsHandler)
 	}
 	// Define main router
 	apiRouter := app.Group("/api")

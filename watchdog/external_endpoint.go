@@ -59,7 +59,7 @@ func executeExternalEndpointHeartbeat(ee *endpoint.ExternalEndpoint, cfg *config
 		Success:   false,
 		Errors:    []string{"heartbeat: no update received within " + ee.Heartbeat.Interval.String()},
 	}
-	if cfg.Metrics {
+	if cfg.Metrics.Enabled {
 		metrics.PublishMetricsForEndpoint(convertedEndpoint, result, extraLabels)
 	}
 	UpdateEndpointStatus(convertedEndpoint, result)
