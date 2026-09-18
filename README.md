@@ -250,7 +250,7 @@ If you want to test it locally, see [Docker](#docker).
 ## Configuration
 | Parameter                    | Description                                                                                                                              | Default       |
 |:-----------------------------|:-----------------------------------------------------------------------------------------------------------------------------------------|:--------------|
-| `metrics`                    | Whether to expose metrics at `/metrics`.                                                                                                 | `false`       |
+| `metrics`                    | Metrics configuration. See [Metrics](#metrics).                                                                                          | `false`       |
 | `storage`                    | [Storage configuration](#storage).                                                                                                       | `{}`          |
 | `alerting`                   | [Alerting configuration](#alerting).                                                                                                     | `{}`          |
 | `announcements`              | [Announcements configuration](#announcements).                                                                                           | `[]`          |
@@ -2838,8 +2838,20 @@ web:
 
 
 ### Metrics
-To enable metrics, you must set `metrics` to `true`. Doing so will expose Prometheus-friendly metrics at the `/metrics`
-endpoint on the same port your application is configured to run on (`web.port`).
+To enable metrics, you must set `metrics` to `true` (or `metrics.enabled` to `true`). Doing so will expose Prometheus-friendly
+metrics at the `/metrics` endpoint on the same port your application is configured to run on (`web.port`).
+
+| Parameter         | Description                                                                                                       | Default |
+|:------------------|:------------------------------------------------------------------------------------------------------------------|:--------|
+| `metrics.enabled` | Whether to expose metrics at `/metrics`.                                                                          | `false` |
+| `metrics.port`    | Serve `/metrics` on a dedicated port instead of `web.port`, e.g. to keep it off a public reverse proxy. Plain HTTP. | `0`     |
+| `metrics.auth`    | Require authentication on `/metrics` using the `security` configuration. Prometheus can only use `security.basic`. | `false` |
+
+```yaml
+metrics:
+  enabled: true
+  port: 9090
+```
 
 | Metric name                                  | Type    | Description                                                                | Labels                          | Relevant endpoint types |
 |:---------------------------------------------|:--------|:---------------------------------------------------------------------------|:--------------------------------|:------------------------|

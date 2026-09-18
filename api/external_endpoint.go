@@ -83,7 +83,7 @@ func CreateExternalEndpointResult(cfg *config.Config) fiber.Handler {
 		} else {
 			logr.Debug("[api.CreateExternalEndpointResult] Not handling alerting because currently in the maintenance window")
 		}
-		if cfg.Metrics {
+		if cfg.Metrics.Enabled {
 			metrics.PublishMetricsForEndpoint(convertedEndpoint, result, extraLabels)
 		}
 		// Return the result

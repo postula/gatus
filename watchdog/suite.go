@@ -47,7 +47,7 @@ func executeSuite(s *suite.Suite, cfg *config.Config, extraLabels []string) {
 	// Execute the suite using its Execute method
 	result := s.Execute()
 	// Publish metrics for the suite execution
-	if cfg.Metrics {
+	if cfg.Metrics.Enabled {
 		metrics.PublishMetricsForSuite(s, result, extraLabels)
 	}
 	// Store result
