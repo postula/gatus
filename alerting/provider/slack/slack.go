@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/TwiN/gatus/v5/alerting/alert"
 	"github.com/TwiN/gatus/v5/client"
@@ -15,25 +16,39 @@ import (
 )
 
 var (
-	ErrWebhookURLNotSet       = errors.New("webhook-url not set")
+	ErrWebhookURLNotSet       = errors.New("webhook-url or bot-token and channel must be set")
 	ErrDuplicateGroupOverride = errors.New("duplicate group override")
 )
 
 type Config struct {
-	WebhookURL string `yaml:"webhook-url"`     // Slack webhook URL
-	Title      string `yaml:"title,omitempty"` // Title of the message that will be sent
+	WebhookURL string `yaml:"webhook-url"`         // Slack webhook URL
+	BotToken   string `yaml:"bot-token,omitempty"` // Slack bot token, takes precedence over webhook-url so resolutions update the triggered message
+	Channel    string `yaml:"channel,omitempty"`   // Channel to post to when using bot-token
+	Title      string `yaml:"title,omitempty"`     // Title of the message that will be sent
 }
 
+const apiURL = "https://slack.com/api/"
+
 func (cfg *Config) Validate() error {
-	if len(cfg.WebhookURL) == 0 {
-		return ErrWebhookURLNotSet
+	if cfg.usesBot() || len(cfg.WebhookURL) > 0 {
+		return nil
 	}
-	return nil
+	return ErrWebhookURLNotSet
+}
+
+func (cfg *Config) usesBot() bool {
+	return len(cfg.BotToken) > 0 && len(cfg.Channel) > 0
 }
 
 func (cfg *Config) Merge(override *Config) {
 	if len(override.WebhookURL) > 0 {
 		cfg.WebhookURL = override.WebhookURL
+	}
+	if len(override.BotToken) > 0 {
+		cfg.BotToken = override.BotToken
+	}
+	if len(override.Channel) > 0 {
+		cfg.Channel = override.Channel
 	}
 	if len(override.Title) > 0 {
 		cfg.Title = override.Title
@@ -77,12 +92,23 @@ func (provider *AlertProvider) Send(ep *endpoint.Endpoint, alert *alert.Alert, r
 	if err != nil {
 		return err
 	}
-	buffer := bytes.NewBuffer(provider.buildRequestBody(cfg, ep, alert, result, resolved))
-	request, err := http.NewRequest(http.MethodPost, cfg.WebhookURL, buffer)
+	body := provider.buildRequestBody(cfg, ep, alert, result, resolved)
+	url := cfg.WebhookURL
+	if cfg.usesBot() {
+		url = apiURL + "chat.postMessage"
+		if resolved && len(body.TS) > 0 {
+			url = apiURL + "chat.update"
+		}
+	}
+	bodyAsJSON, _ := json.Marshal(body)
+	request, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(bodyAsJSON))
 	if err != nil {
 		return err
 	}
 	request.Header.Set("Content-Type", "application/json")
+	if cfg.usesBot() {
+		request.Header.Set("Authorization", "Bearer "+cfg.BotToken)
+	}
 	response, err := client.GetHTTPClient(nil).Do(request)
 	if err != nil {
 		return err
@@ -92,10 +118,34 @@ func (provider *AlertProvider) Send(ep *endpoint.Endpoint, alert *alert.Alert, r
 		body, _ := io.ReadAll(response.Body)
 		return fmt.Errorf("call to provider alert returned status code %d: %s", response.StatusCode, string(body))
 	}
-	return err
+	if !cfg.usesBot() {
+		return nil
+	}
+	// The Web API reports failures with HTTP 200 and ok=false
+	var apiResponse struct {
+		OK      bool   `json:"ok"`
+		Error   string `json:"error"`
+		Channel string `json:"channel"`
+		TS      string `json:"ts"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&apiResponse); err != nil {
+		return err
+	}
+	if !apiResponse.OK {
+		return fmt.Errorf("call to provider alert returned error: %s", apiResponse.Error)
+	}
+	if resolved {
+		alert.ResolveKey = ""
+	} else {
+		// Persisted by the watchdog so the resolution can update this message, even across restarts
+		alert.ResolveKey = apiResponse.Channel + "/" + apiResponse.TS
+	}
+	return nil
 }
 
 type Body struct {
+	Channel     string       `json:"channel,omitempty"`
+	TS          string       `json:"ts,omitempty"`
 	Text        string       `json:"text"`
 	Attachments []Attachment `json:"attachments"`
 }
@@ -115,7 +165,7 @@ type Field struct {
 }
 
 // buildRequestBody builds the request body for the provider
-func (provider *AlertProvider) buildRequestBody(cfg *Config, ep *endpoint.Endpoint, alert *alert.Alert, result *endpoint.Result, resolved bool) []byte {
+func (provider *AlertProvider) buildRequestBody(cfg *Config, ep *endpoint.Endpoint, alert *alert.Alert, result *endpoint.Result, resolved bool) Body {
 	var message, color string
 	if resolved {
 		message = fmt.Sprintf("An alert for *%s* has been resolved after passing successfully %d time(s) in a row", ep.DisplayName(), alert.SuccessThreshold)
@@ -149,6 +199,13 @@ func (provider *AlertProvider) buildRequestBody(cfg *Config, ep *endpoint.Endpoi
 			},
 		},
 	}
+	if cfg.usesBot() {
+		body.Channel = cfg.Channel
+		// Without a stored message (e.g. triggered before bot-token was configured), post a new one instead
+		if channel, ts, found := strings.Cut(alert.ResolveKey, "/"); resolved && found {
+			body.Channel, body.TS = channel, ts
+		}
+	}
 	if len(body.Attachments[0].Title) == 0 {
 		body.Attachments[0].Title = ":helmet_with_white_cross: Gatus"
 	}
@@ -159,8 +216,7 @@ func (provider *AlertProvider) buildRequestBody(cfg *Config, ep *endpoint.Endpoi
 			Short: false,
 		})
 	}
-	bodyAsJSON, _ := json.Marshal(body)
-	return bodyAsJSON
+	return body
 }
 
 // GetDefaultAlert returns the provider's default alert configuration

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"os"
 	"time"
 
@@ -11,7 +12,8 @@ import (
 )
 
 var (
-	app *fiber.App
+	app        *fiber.App
+	metricsApp *fiber.App
 )
 
 // Handle creates the router and starts the server
@@ -22,8 +24,18 @@ func Handle(cfg *config.Config) {
 	server.ReadTimeout = 15 * time.Second
 	server.WriteTimeout = 15 * time.Second
 	server.IdleTimeout = 15 * time.Second
+	metricsApp = api.MetricsRouter()
 	if os.Getenv("ROUTER_TEST") == "true" {
 		return
+	}
+	if metricsApp != nil {
+		metricsAddress := fmt.Sprintf("%s:%d", cfg.Web.Address, cfg.Metrics.Port)
+		logr.Info("[controller.Handle] Serving metrics on " + metricsAddress)
+		go func() {
+			if err := metricsApp.Listen(metricsAddress); err != nil {
+				logr.Fatalf("[controller.Handle] %s", err.Error())
+			}
+		}()
 	}
 	logr.Info("[controller.Handle] Listening on " + cfg.Web.SocketAddress())
 	if cfg.Web.HasTLS() {
@@ -45,5 +57,9 @@ func Shutdown() {
 	if app != nil {
 		_ = app.Shutdown()
 		app = nil
+	}
+	if metricsApp != nil {
+		_ = metricsApp.Shutdown()
+		metricsApp = nil
 	}
 }

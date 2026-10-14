@@ -47,7 +47,7 @@ func executeEndpoint(ep *endpoint.Endpoint, cfg *config.Config, extraLabels []st
 	}
 	logr.Debugf("[watchdog.executeEndpoint] Monitoring group=%s; endpoint=%s; key=%s", ep.Group, ep.Name, ep.Key())
 	result := ep.EvaluateHealth()
-	if cfg.Metrics {
+	if cfg.Metrics.Enabled {
 		metrics.PublishMetricsForEndpoint(ep, result, extraLabels)
 	}
 	UpdateEndpointStatus(ep, result)

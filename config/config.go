@@ -65,8 +65,8 @@ type Config struct {
 	// Deprecated: Use the GATUS_LOG_LEVEL environment variable instead
 	Debug bool `yaml:"debug,omitempty"`
 
-	// Metrics Whether to expose metrics at /metrics
-	Metrics bool `yaml:"metrics,omitempty"`
+	// Metrics Configuration for the Prometheus /metrics endpoint
+	Metrics MetricsConfig `yaml:"metrics,omitempty"`
 
 	// SkipInvalidConfigUpdate Whether to make the application ignore invalid configuration
 	// if the configuration file is updated while the application is running
@@ -309,6 +309,9 @@ func parseAndValidateConfigBytes(yamlBytes []byte) (config *Config, err error) {
 			return nil, err
 		}
 		if err := ValidateWebConfig(config); err != nil {
+			return nil, err
+		}
+		if err := ValidateMetricsConfig(config); err != nil {
 			return nil, err
 		}
 		if err := ValidateUIConfig(config); err != nil {

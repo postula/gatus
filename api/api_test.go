@@ -105,7 +105,7 @@ func TestNew(t *testing.T) {
 	}
 	for _, scenario := range scenarios {
 		t.Run(scenario.Name, func(t *testing.T) {
-			cfg := &config.Config{Metrics: true, UI: &ui.Config{}}
+			cfg := &config.Config{Metrics: config.MetricsConfig{Enabled: true}, UI: &ui.Config{}}
 			if scenario.WithSecurity {
 				cfg.Security = &security.Config{
 					Basic: &security.BasicConfig{
@@ -127,6 +127,58 @@ func TestNew(t *testing.T) {
 			}
 			if response.StatusCode != scenario.ExpectedCode {
 				t.Errorf("%s %s should have returned %d, but returned %d instead", request.Method, request.URL, scenario.ExpectedCode, response.StatusCode)
+			}
+		})
+	}
+}
+
+func TestNew_metrics(t *testing.T) {
+	basic := &security.Config{Basic: &security.BasicConfig{
+		Username:                        "john.doe",
+		PasswordBcryptHashBase64Encoded: "JDJhJDA4JDFoRnpPY1hnaFl1OC9ISlFsa21VS09wOGlPU1ZOTDlHZG1qeTFvb3dIckRBUnlHUmNIRWlT",
+	}}
+	scenarios := []struct {
+		Name                string
+		Metrics             config.MetricsConfig
+		Security            *security.Config
+		Authorization       string
+		ExpectedMainCode    int
+		ExpectedMetricsCode int
+	}{
+		{Name: "main-port", Metrics: config.MetricsConfig{Enabled: true}, ExpectedMainCode: 200},
+		{Name: "auth-main-port", Metrics: config.MetricsConfig{Enabled: true, Auth: true}, Security: basic, ExpectedMainCode: 401},
+		{Name: "dedicated-port", Metrics: config.MetricsConfig{Enabled: true, Port: 9090}, ExpectedMainCode: 404, ExpectedMetricsCode: 200},
+		{Name: "auth-without-credentials", Metrics: config.MetricsConfig{Enabled: true, Port: 9090, Auth: true}, Security: basic, ExpectedMainCode: 404, ExpectedMetricsCode: 401},
+		{Name: "auth-with-credentials", Metrics: config.MetricsConfig{Enabled: true, Port: 9090, Auth: true}, Security: basic, Authorization: "Basic am9obi5kb2U6aHVudGVyMg==", ExpectedMainCode: 404, ExpectedMetricsCode: 200},
+	}
+	for _, scenario := range scenarios {
+		t.Run(scenario.Name, func(t *testing.T) {
+			api := New(&config.Config{Metrics: scenario.Metrics, Security: scenario.Security, UI: &ui.Config{}})
+			get := func(app *fiber.App, path string) int {
+				request := httptest.NewRequest("GET", path, http.NoBody)
+				if scenario.Authorization != "" {
+					request.Header.Set("Authorization", scenario.Authorization)
+				}
+				response, err := app.Test(request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return response.StatusCode
+			}
+			if code := get(api.Router(), "/health"); code != 200 {
+				t.Errorf("metrics auth must not gate other routes: /health returned %d", code)
+			}
+			if code := get(api.Router(), "/metrics"); code != scenario.ExpectedMainCode {
+				t.Errorf("main router: expected %d, got %d", scenario.ExpectedMainCode, code)
+			}
+			if scenario.ExpectedMetricsCode == 0 {
+				if api.MetricsRouter() != nil {
+					t.Error("expected no dedicated metrics router")
+				}
+				return
+			}
+			if code := get(api.MetricsRouter(), "/metrics"); code != scenario.ExpectedMetricsCode {
+				t.Errorf("metrics router: expected %d, got %d", scenario.ExpectedMetricsCode, code)
 			}
 		})
 	}

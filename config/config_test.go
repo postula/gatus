@@ -222,7 +222,7 @@ endpoints:
       - "[STATUS] == 200"`,
 			},
 			expectedConfig: &Config{
-				Metrics: true,
+				Metrics: MetricsConfig{Enabled: true},
 				Alerting: &alerting.Config{
 					Discord: &discord.AlertProvider{DefaultConfig: discord.Config{WebhookURL: "https://discord.com/api/webhooks/xxx/yyy"}},
 					Slack:   &slack.AlertProvider{DefaultConfig: slack.Config{WebhookURL: "https://hooks.slack.com/services/xxx/yyy/zzz"}, DefaultAlert: &alert.Alert{Enabled: &yes}},
@@ -529,7 +529,7 @@ endpoints:
 	if config == nil {
 		t.Fatal("DefaultConfig shouldn't have been nil")
 	}
-	if config.Metrics {
+	if config.Metrics.Enabled {
 		t.Error("Metrics should've been false by default")
 	}
 	if config.Web.Address != web.DefaultAddress {
@@ -571,7 +571,7 @@ endpoints:
 	if config == nil {
 		t.Fatal("Config shouldn't have been nil")
 	}
-	if config.Metrics {
+	if config.Metrics.Enabled {
 		t.Error("Metrics should've been false by default")
 	}
 	if config.Endpoints[0].URL != "https://twin.sh/actuator/health" {
@@ -604,7 +604,7 @@ endpoints:
 	if config == nil {
 		t.Fatal("Config shouldn't have been nil")
 	}
-	if config.Metrics {
+	if config.Metrics.Enabled {
 		t.Error("Metrics should've been false by default")
 	}
 	if config.Endpoints[0].URL != "https://twin.sh/health" {
@@ -638,7 +638,7 @@ endpoints:
 	if config == nil {
 		t.Fatal("Config shouldn't have been nil")
 	}
-	if config.Metrics {
+	if config.Metrics.Enabled {
 		t.Error("Metrics should've been false by default")
 	}
 	if config.Endpoints[0].URL != "https://twin.sh/health" {
@@ -688,7 +688,7 @@ endpoints:
 	if config == nil {
 		t.Fatal("Config shouldn't have been nil")
 	}
-	if !config.Metrics {
+	if !config.Metrics.Enabled {
 		t.Error("Metrics should have been true")
 	}
 	if config.Endpoints[0].URL != "https://twin.sh/health" {
@@ -726,7 +726,7 @@ endpoints:
 	if config == nil {
 		t.Fatal("Config shouldn't have been nil")
 	}
-	if !config.Metrics {
+	if !config.Metrics.Enabled {
 		t.Error("Metrics should have been true")
 	}
 	if config.Web.Address != "192.168.0.1" {
@@ -1056,7 +1056,7 @@ endpoints:
 	if config == nil {
 		t.Fatal("Config shouldn't have been nil")
 	}
-	if config.Metrics {
+	if config.Metrics.Enabled {
 		t.Error("Metrics should've been false by default")
 	}
 	// Alerting providers
@@ -2645,5 +2645,22 @@ func TestResolveTunnelForClientConfig(t *testing.T) {
 				t.Errorf("resolveTunnelForClientConfig() unexpected error = %v", err)
 			}
 		})
+	}
+}
+
+func TestParseAndValidateConfigBytesWithMetricsBlock(t *testing.T) {
+	endpoints := "\nendpoints:\n  - name: website\n    url: https://twin.sh/health\n    conditions:\n      - \"[STATUS] == 200\"\n"
+	cfg, err := parseAndValidateConfigBytes([]byte("metrics:\n  enabled: true\n  port: 9090\n" + endpoints))
+	if err != nil {
+		t.Fatal("expected no error, got", err.Error())
+	}
+	if !cfg.Metrics.Enabled || cfg.Metrics.Port != 9090 || cfg.Metrics.Auth {
+		t.Errorf("unexpected metrics config: %+v", cfg.Metrics)
+	}
+	if _, err := parseAndValidateConfigBytes([]byte("metrics:\n  enabled: true\n  port: 8080\n" + endpoints)); err != ErrInvalidMetricsPort {
+		t.Errorf("expected %v, got %v", ErrInvalidMetricsPort, err)
+	}
+	if _, err := parseAndValidateConfigBytes([]byte("metrics:\n  enabled: true\n  auth: true\n" + endpoints)); err != ErrMetricsAuthWithoutSecurity {
+		t.Errorf("expected %v, got %v", ErrMetricsAuthWithoutSecurity, err)
 	}
 }
